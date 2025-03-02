@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Math GPT - Solver</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        #loading-spinner {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 10px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Math GPT: Your AI Tutor</h1>
+    <div class="input-group">
+        <input type="text" id="question" placeholder="Enter your maths question...">
+        <input type="file" id="fileInput" style="display:none;" accept=".jpg,.jpeg,.png,.pdf,.docx,.pptx">
+        <button class="upload-btn" onclick="document.getElementById('fileInput').click()">📎 Upload</button>
+    </div>
+    <div id="uploaded-file" style="margin-top: 10px; color: green;"></div>
+    <select id="action">
+        <option value="solve">Solve the question</option>
+        <option value="explain">Explain the answer</option>
+    </select>
+    <button onclick="sendRequest()">Submit</button>
+
+    <!-- Spinner will show while waiting -->
+    <div id="loading-spinner">
+        <div class="spinner"></div>
+        <p>Please wait while we process your request...</p>
+    </div>
+
+    <div id="output"></div>
+</div>
+
+<script>
+    let extractedText = "";  // To store extracted text from file
+
+    document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+    function handleFileUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        showSpinner();
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch('/upload_and_extract', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideSpinner();
+            if (data.error) {
+                document.getElementById('output').innerHTML = `<p style="color:red;">${data.error}</p>`;
+                extractedText = "";  // Clear extracted text if there's an error
+            } else {
+                extractedText = data.text;  // Store extracted text
+                document.getElementById('uploaded-file').innerHTML = `📎 <b>${file.name}</b> uploaded successfully`;
+            }
+        })
+        .catch(error => {
+            hideSpinner();
+            extractedText = "";  // Clear extracted text on failure
+            document.getElementById('output').innerHTML = `<p style="color:red;">Failed to upload or extract text.</p>`;
+        });
+        document.getElementById('question').value = '';  // Clear manual question
+    }
+
+    function clearUploadedFile() {
+    document.getElementById('uploaded-file').innerHTML = '';
+    document.getElementById('fileInput').value = '';  // Important - clears file input itself
+    }
+    function sendRequest() {
+    const manualQuestion = document.getElementById('question').value.trim();
+
+    const fileInput = document.getElementById('fileInput');
+    const fileUploaded = fileInput.files.length > 0;
+
+    let questionToSend = manualQuestion;
+
+    if (manualQuestion) {
+        // User typed a question manually, so clear previous file info
+        clearUploadedFile();
+        extractedText = "";  // Reset extracted text
+    } else if (fileUploaded) {
+        // No manual question, so use extracted text if available
+        if (extractedText.trim() !== "") {
+            questionToSend = extractedText;
+        } else {
+            document.getElementById('output').innerHTML = `<p style="color:red;">Please upload a valid file with readable content.</p>`;
+            return;
+        }
+    }
+
+    if (!questionToSend) {
+        document.getElementById('output').innerHTML = `<p style="color:red;">Please provide a question or upload a file.</p>`;
+        return;
+    }
+
+    const action = document.getElementById('action').value;
+
+    showSpinner();
+
+    fetch('/solve', {
+        method: 'POST',
+        body: new URLSearchParams({question: questionToSend, action}),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideSpinner();
+        const output = document.getElementById('output');
+        if (data.error) {
+            output.innerHTML = `<p style="color:red;">${data.error}</p>`;
+        } else if (data.graph) {
+            output.innerHTML = data.graph;
+        } else {
+            output.innerHTML = `<pre>${data.result.replace(/\*\*(.*?)\*\*/g, '<b style="color:black;">$1</b>')}</pre>`;
+        }
+    })
+    .catch(error => {
+        hideSpinner();
+        document.getElementById('output').innerHTML = `<p style="color:red;">Something went wrong.</p>`;
+    });
+}
+
+    function showSpinner() {
+        document.getElementById('loading-spinner').style.display = 'block';
+        document.getElementById('output').innerHTML = '';  // Clear old result
+    }
+
+    function hideSpinner() {
+        document.getElementById('loading-spinner').style.display = 'none';
+    }
+</script>
+</body>
+</html>
